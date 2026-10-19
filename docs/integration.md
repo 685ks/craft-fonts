@@ -4,6 +4,13 @@ craft-fonts is a **fully optional** source of fonts. An app must build, test and
 with it, the app embeds the fonts listed in `fonts/manifest.txt` and uses them (today: Japanese
 UI and document fallback).
 
+**The house UI font.** Inter is the design system's only family, and JetBrains Mono is its
+monospace companion. An app using the house theme (`craft-ui`'s `house` module) makes Inter the
+first entry of egui's proportional family and JetBrains Mono the first entry of the monospace
+family, ahead of its own bundled fonts; the script fonts above stay as fallbacks. Both are
+variable fonts: egui draws their default instance (Regular), so an app that needs real Medium,
+SemiBold or Bold weights should instance them at build time rather than synthesise bold.
+
 ## Why not a Cargo dependency
 
 Cargo resolves every dependency in `Cargo.toml`, optional ones included, even when the feature

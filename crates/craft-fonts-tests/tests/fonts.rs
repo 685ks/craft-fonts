@@ -227,3 +227,70 @@ fn georgian_fonts_cover_georgian_text() {
         ),
     );
 }
+
+#[test]
+fn latin_ui_fonts_cover_latin_greek_and_cyrillic_text() {
+    covers(
+        "Latn",
+        concat!(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+            "àáâãäåæçèéêëìíîïñòóôõöøùúûüýÿßœŒ€£¥©®™°±×÷",
+            ".,:;!?¡¿'\"()[]{}<>/\\|@#$%&*+-=_~^`…–—‘’“”•→←",
+        ),
+    );
+    covers("Grek", "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω");
+    covers(
+        "Cyrl",
+        "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+    );
+}
+
+#[test]
+fn the_house_ui_font_has_tabular_figures() {
+    // The design system sets every number in tabular figures (`font-variant-numeric: tabular-nums`).
+    let inter = FONTS
+        .iter()
+        .find(|f| f.family == "Inter")
+        .expect("the manifest lists Inter, the house UI font");
+    let data = bytes(inter);
+    let font = FontRef::new(&data).unwrap_or_else(|e| panic!("{}: {e}", inter.file));
+    let gsub = font
+        .gsub()
+        .unwrap_or_else(|e| panic!("{}: no GSUB: {e}", inter.file));
+    let features = gsub
+        .feature_list()
+        .unwrap_or_else(|e| panic!("{}: GSUB features: {e}", inter.file));
+    assert!(
+        features
+            .feature_records()
+            .iter()
+            .any(|r| r.feature_tag() == skrifa::Tag::new(b"tnum")),
+        "Inter has no tnum feature"
+    );
+}
+
+#[test]
+fn the_monospace_font_has_equal_advances() {
+    let mono = FONTS
+        .iter()
+        .find(|f| f.family == "JetBrains Mono")
+        .expect("the manifest lists JetBrains Mono");
+    let data = bytes(mono);
+    let font = FontRef::new(&data).unwrap_or_else(|e| panic!("{}: {e}", mono.file));
+    let charmap = font.charmap();
+    let metrics = font.glyph_metrics(
+        skrifa::instance::Size::unscaled(),
+        skrifa::instance::LocationRef::default(),
+    );
+    let advances: Vec<f32> = "iWm0.:"
+        .chars()
+        .map(|c| {
+            let gid = charmap.map(c).unwrap_or_else(|| panic!("no glyph for {c}"));
+            metrics.advance_width(gid).unwrap_or_default()
+        })
+        .collect();
+    assert!(
+        advances.windows(2).all(|w| w[0] == w[1]),
+        "advances differ: {advances:?}"
+    );
+}
