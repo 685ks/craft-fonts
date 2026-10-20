@@ -24,6 +24,7 @@ This library is meant to have the following:
 | `crates/craft-fonts` | Rust: the manifest as a static table, finding a checkout (`CRAFT_FONTS_DIR`), loading it, and an `embed` feature that compiles the fonts in. |
 | `crates/craft-fonts-build` | Rust, no dependencies: the build-script helper apps use (as a build-dependency only) to embed an optional checkout's fonts with their fallback chains; also defines the manifest format. |
 | `crates/craft-fonts-tests` | Tests asserted on these fonts: checksums, licences, family names, per-script coverage, Japanese outlines and vertical-text (`vert`/`vrt2`) support, COLRv1 emoji. |
+| `crates/xtask` | Repository tools: `cargo xtask subset` (web/WASM subsets) and `cargo xtask fetch` (pinned upstream downloads). |
 | `docs/integration.md` | How an app uses craft-fonts as a fully optional build input. |
 
 ### Fonts
@@ -92,6 +93,25 @@ for every option, how to use the chains in egui and document engines, and releas
 
 **Font assets for the Crafting Apps belong here**, not in the app repos: add the file, its licence,
 a manifest line and an attribution row, and the tests check it.
+
+## Subsetting for web/WASM builds
+
+Web hosts limit file sizes and every byte is downloaded, so a web build should embed only the
+characters it shows. `cargo xtask subset` cuts fonts down with [skera](https://crates.io/crates/skera)
+(the Rust port of HarfBuzz's `hb-subset`; layout rules, variations and COLRv1 are kept):
+
+```sh
+# Inter and BIZ UDPGothic cut to ASCII, kana and the app's own strings, as a checkout of their own:
+cargo xtask subset --checkout --out target/web-fonts \
+    --unicodes U+0020-U+007E,U+3000-U+30FF --text-file ../my-app/assets/strings.txt \
+    Inter "BIZ UDPGothic"
+CRAFT_FONTS_DIR=$PWD/target/web-fonts cargo build --target wasm32-unknown-unknown  # in the app
+```
+
+`FONT` is a family name (every style), a manifest file path or `all`. Without `--checkout` the
+subset files are written flat into `--out` (default `target/subset`). With it, the output has the
+same layout as this repo, the licences and a `fonts/manifest.txt` with the new checksums, so the
+`craft-fonts-build` helper reads it like a full checkout (remember `Builder::web_fonts`).
 
 ## Develop
 
