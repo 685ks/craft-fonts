@@ -121,8 +121,8 @@ app was built without craft-fonts. Code that uses it must work when it is empty.
   the app was built with craft-fonts.
 - **Document text engines:** register them as fallback faces for Japanese, after the document's
   requested font and the app's bundled fonts.
-- **Web (wasm32):** the recipe embeds only `BIZ UDPGothic Regular` (~4.5 MB); all four fonts are
-  ~24 MB, over typical per-file hosting limits. If the app's web build has a size check, measure
+- **Web (wasm32):** the recipe embeds only `BIZ UDPGothic Regular` (~4.5 MB); all the fonts are
+  ~71 MB, over typical per-file hosting limits. If the app's web build has a size check, measure
   with `CRAFT_FONTS_DIR` set and shrink `WEB_FONTS` (even to empty) if it fails.
 - Prefer `BIZ UDPGothic` for UI text and `Shippori Mincho` / `BIZ UDMincho` for serif document
   text.

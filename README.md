@@ -22,7 +22,7 @@ This library is meant to have the following:
 | `fonts/manifest.txt` | Machine-readable list of every font: family, style, file, scripts, licence, SHA-256, pinned source. |
 | `ATTRIBUTION.md` | Authors, pinned sources and licences. |
 | `crates/craft-fonts` | Rust: the manifest as a static table, finding a checkout (`CRAFT_FONTS_DIR`), loading it, and an `embed` feature that compiles the fonts in. |
-| `crates/craft-fonts-tests` | Tests asserted on these fonts: checksums, licences, family names, Japanese coverage and outlines, vertical-text (`vert`/`vrt2`) support. |
+| `crates/craft-fonts-tests` | Tests asserted on these fonts: checksums, licences, family names, per-script coverage, Japanese outlines and vertical-text (`vert`/`vrt2`) support, COLRv1 emoji. |
 | `docs/integration.md` | How an app uses craft-fonts as a fully optional build input. |
 
 ### Fonts
@@ -38,6 +38,11 @@ This library is meant to have the following:
 | Noto Sans Georgian | Regular (variable: wdth, wght) | Georgian UI and document text (sans) | OFL-1.1 |
 | Inter | Regular (variable: opsz, wght) | The house UI font for Latin, Greek and Cyrillic (has tabular figures) | OFL-1.1 |
 | JetBrains Mono | Regular (variable: wght) | Monospace UI text: command lines, code, numeric columns | OFL-1.1 |
+| Noto Sans KR | Regular (variable: wght) | Korean UI and document text (sans) | OFL-1.1 |
+| Noto Sans TC | Regular (variable: wght) | Traditional Chinese UI and document text (sans) | OFL-1.1 |
+| Noto Sans Hebrew | Regular (variable: wdth, wght) | Hebrew UI and document text (sans) | OFL-1.1 |
+| Noto Sans Devanagari | Regular (variable: wdth, wght) | Devanagari (Hindi, Marathi, Nepali…) UI and document text (sans) | OFL-1.1 |
+| Noto Color Emoji | Regular (COLRv1) | Colour emoji (vector COLRv1; needs a COLRv1-capable renderer) | OFL-1.1 |
 
 ## How the apps use it
 

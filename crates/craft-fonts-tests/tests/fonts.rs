@@ -294,3 +294,71 @@ fn the_monospace_font_has_equal_advances() {
         "advances differ: {advances:?}"
     );
 }
+
+#[test]
+fn korean_fonts_cover_korean_text() {
+    covers(
+        "Kore",
+        concat!(
+            "가나다라마바사아자차카타파하한국어글꼴파일편집보기창도움말새로열기저장닫기실행취소복사붙여넣기삭제선택",
+            "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ",
+            "韓國漢字",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        ),
+    );
+}
+
+#[test]
+fn traditional_chinese_fonts_cover_chinese_text() {
+    covers(
+        "Hant",
+        concat!(
+            "中文繁體字檔案編輯檢視視窗說明新增開啟儲存關閉復原重做複製貼上刪除選擇圖層頁面樣式顏色匯出列印設定",
+            "，。、：；？！（）「」『』…",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        ),
+    );
+}
+
+#[test]
+fn hebrew_fonts_cover_hebrew_text() {
+    covers(
+        "Hebr",
+        concat!(
+            "אבגדהוזחטיכךלמםנןסעפףצץקרשת",
+            "\u{05B0}\u{05B4}\u{05B7}\u{05B8}\u{05BC}\u{05C1}\u{05C2}",
+            "׳״₪",
+        ),
+    );
+}
+
+#[test]
+fn devanagari_fonts_cover_devanagari_text() {
+    covers(
+        "Deva",
+        concat!(
+            "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
+            "\u{093E}\u{093F}\u{0940}\u{0941}\u{0942}\u{0947}\u{0948}\u{094B}\u{094C}\u{094D}\u{0902}\u{0903}\u{093C}",
+            "०१२३४५६७८९।॥",
+        ),
+    );
+}
+
+#[test]
+fn the_emoji_font_covers_emoji_in_colrv1() {
+    covers("Zsye", "😀😂🥲👍🎉❤🔥✅🚀🌍🍣🐱");
+    for f in for_script("Zsye") {
+        let data = bytes(f);
+        let font = FontRef::new(&data).unwrap_or_else(|e| panic!("{}: {e}", f.file));
+        let colr = font
+            .colr()
+            .unwrap_or_else(|e| panic!("{}: no COLR table: {e}", f.file));
+        assert!(
+            colr.version() >= 1,
+            "{}: COLR version {} (want COLRv1)",
+            f.file,
+            colr.version()
+        );
+        assert!(font.cpal().is_ok(), "{}: no CPAL palette", f.file);
+    }
+}
