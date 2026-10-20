@@ -8,11 +8,13 @@
     clippy::unreachable
 )]
 
+pub mod fetch;
 pub mod subset;
 
 /// The repository root (where `fonts/` lives).
 pub fn repo_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    root.canonicalize().unwrap_or(root)
 }
 
 /// Lower-case hex SHA-256 of `bytes`.

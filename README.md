@@ -19,6 +19,7 @@ This library is meant to have the following:
 | Path | What |
 |---|---|
 | `fonts/` | The font files, one directory per family, each with its licence. |
+| `fonts/upstream.txt` | Commit-pinned upstream download URL and SHA-256 of every font and licence file, for `cargo xtask fetch`. |
 | `fonts/manifest.txt` | Machine-readable list of every font: family, style, file, scripts, licence, SHA-256, pinned source, fallback-chain ranks. |
 | `ATTRIBUTION.md` | Authors, pinned sources and licences. |
 | `crates/craft-fonts` | Rust: the manifest as a static table, finding a checkout (`CRAFT_FONTS_DIR`), loading it, and an `embed` feature that compiles the fonts in. |
@@ -112,6 +113,22 @@ CRAFT_FONTS_DIR=$PWD/target/web-fonts cargo build --target wasm32-unknown-unknow
 subset files are written flat into `--out` (default `target/subset`). With it, the output has the
 same layout as this repo, the licences and a `fonts/manifest.txt` with the new checksums, so the
 `craft-fonts-build` helper reads it like a full checkout (remember `Builder::web_fonts`).
+
+## Fetching the fonts from upstream
+
+`fonts/upstream.txt` pins every font and licence file to an immutable upstream URL (google/fonts,
+notofonts, googlefonts, all at fixed commits) and its SHA-256. `cargo xtask fetch` downloads them
+with `curl` and writes each file only after its checksum matches:
+
+```sh
+cargo xtask fetch                        # restore missing or changed files in this checkout
+cargo xtask fetch --dest /tmp/cf --force # download everything afresh (checks the pins themselves)
+cargo xtask fetch --verify               # no network: check the local files against the pins
+cargo xtask fetch noto-sans-kr           # only pins whose path contains a filter
+```
+
+The binaries are still checked in; the pins make it possible to drop them from git later (or to
+fetch them in CI) without losing the provenance.
 
 ## Develop
 

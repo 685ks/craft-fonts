@@ -13,6 +13,12 @@ cargo xtask <command>
       (default DIR: target/subset); with --checkout, DIR becomes a craft-fonts checkout (fonts,
       licences and a manifest with the new checksums) to point CRAFT_FONTS_DIR at.
 
+  fetch [--dest DIR] [--force] [--verify] [FILTER]...
+      Download the files pinned in fonts/upstream.txt (fonts and licences) with curl and check
+      each SHA-256 before writing it under DIR (default: this checkout). Files already present
+      with the right checksum are skipped unless --force. --verify downloads nothing and only
+      checks the files under DIR. FILTERs keep the pins whose path contains one of them.
+
   help
       This text.
 ";
@@ -21,6 +27,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
         Some("subset") => subset(&args[1..]),
+        Some("fetch") => fetch(&args[1..]),
         Some("help" | "--help" | "-h") | None => {
             print!("{HELP}");
             Ok(())
@@ -83,6 +90,54 @@ fn subset(args: &[String]) -> Result<(), String> {
             w.after,
             100.0 * w.after as f64 / w.before.max(1) as f64
         );
+    }
+    Ok(())
+}
+
+fn fetch(args: &[String]) -> Result<(), String> {
+    use xtask::fetch::Outcome;
+    let mut dest = xtask::repo_root();
+    let (mut force, mut verify) = (false, false);
+    let mut filters = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--dest" => dest = PathBuf::from(value(args, &mut i)?),
+            "--force" => force = true,
+            "--verify" => verify = true,
+            flag if flag.starts_with("--") => return Err(format!("unknown flag {flag}")),
+            filter => filters.push(filter.to_string()),
+        }
+        i += 1;
+    }
+    let pins: Vec<_> = xtask::fetch::read_pins(&xtask::repo_root())?
+        .into_iter()
+        .filter(|p| filters.is_empty() || filters.iter().any(|f| p.file.contains(f.as_str())))
+        .collect();
+    if pins.is_empty() {
+        return Err("no pin in fonts/upstream.txt matches".into());
+    }
+    let results = if verify {
+        xtask::fetch::verify(&pins, &dest)
+    } else {
+        xtask::fetch::fetch(&pins, &dest, force, &xtask::fetch::curl)?
+    };
+    let mut bad = 0;
+    for (path, outcome) in &results {
+        match outcome {
+            Outcome::Present => println!("ok       {}", path.display()),
+            Outcome::Fetched => println!("fetched  {}", path.display()),
+            Outcome::Bad(why) => {
+                bad += 1;
+                println!("BAD      {}: {why}", path.display());
+            }
+        }
+    }
+    if bad > 0 {
+        return Err(format!(
+            "{bad} of {} files do not match their pins",
+            results.len()
+        ));
     }
     Ok(())
 }

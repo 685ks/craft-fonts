@@ -132,6 +132,8 @@ craft-fonts' `ATTRIBUTION.md`.
 ## Adding a font
 
 1. Put the file and its licence under `fonts/<family>/`, from a pinned upstream commit.
-2. Add a manifest line (with its SHA-256 and its fallback ranks) and an `ATTRIBUTION.md` row.
+2. Add a manifest line (with its SHA-256 and its fallback ranks), `fonts/upstream.txt` lines for the
+   font and its licence (commit-pinned download URLs), and an `ATTRIBUTION.md` row. Check the pins
+   with `cargo xtask fetch --force --dest /tmp/cf` (downloads and verifies every file).
 3. `cargo test --workspace`: `craft-fonts-tests` checks the checksum, licence, family name and,
    for Japanese fonts, coverage and vertical-text support. Add assertions for any new script.
