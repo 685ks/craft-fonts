@@ -8,8 +8,9 @@
 //! The apps do **not** depend on this crate: Cargo resolves even optional git dependencies, so a
 //! dependency would make craft-fonts required for every build. Apps read `fonts/manifest.txt`
 //! from their own `build.rs` when the `CRAFT_FONTS_DIR` build option is set; see
-//! `docs/integration.md`. This crate is for tools and tests that can afford the dependency, and it
-//! keeps the manifest format ([`parse_manifest`]) defined in one place.
+//! `docs/integration.md`; the `craft-fonts-build` helper does that for them. This crate is for
+//! tools and tests that can afford the dependency. The manifest format ([`parse_manifest`]) and
+//! the chain ranking live in `craft-fonts-build` and are re-exported here.
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -19,11 +20,9 @@
     clippy::unreachable
 )]
 
-mod parse;
-
 use std::path::{Path, PathBuf};
 
-pub use parse::{Entry, FallbackEntry, ManifestError, Role, parse_manifest};
+pub use craft_fonts_build::{Entry, FallbackEntry, ManifestError, Role, parse_manifest};
 
 /// One font file from `fonts/manifest.txt`, known at compile time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,54 +80,33 @@ pub fn for_script(script: &str) -> impl Iterator<Item = &'static Font> + '_ {
 /// listed; pick the one you need by [`Font::style`]. A script with no [`Role::Mono`] entry gets its
 /// [`Role::Ui`] chain for `Mono`. Empty for a script no font is ranked for.
 pub fn fallback_chain(role: Role, script: &str) -> Vec<&'static Font> {
-    let chain = ranked(FONTS, role, script);
-    if chain.is_empty() && role == Role::Mono {
-        return ranked(FONTS, Role::Ui, script);
-    }
-    chain
-}
-
-fn ranked(fonts: &'static [Font], role: Role, script: &str) -> Vec<&'static Font> {
-    let mut chain: Vec<(u16, &'static Font)> = fonts
+    CHAINS
         .iter()
-        .filter_map(|f| f.priority(role, script).map(|p| (p, f)))
-        .collect();
-    chain.sort_by_key(|(p, _)| *p);
-    chain.into_iter().map(|(_, f)| f).collect()
+        .filter(|(r, s, _)| *r == role && *s == script)
+        .flat_map(|(_, _, chain)| chain.iter())
+        .filter_map(|i| FONTS.get(*i))
+        .collect()
 }
 
 /// The scripts that have a `role` chain, sorted (for `Mono`, also those served by the UI chain).
 pub fn fallback_scripts(role: Role) -> Vec<&'static str> {
-    let mut scripts: Vec<&'static str> = FONTS
+    CHAINS
         .iter()
-        .flat_map(|f| f.fallback)
-        .filter(|f| f.role == role || (role == Role::Mono && f.role == Role::Ui))
-        .map(|f| f.script)
-        .collect();
-    scripts.sort_unstable();
-    scripts.dedup();
-    scripts
+        .filter(|(r, _, _)| *r == role)
+        .map(|(_, s, _)| *s)
+        .collect()
 }
 
 /// One list of every font for `role` text, in fallback order: each font at its best priority over
 /// [`fallback_scripts`]. This is what a renderer with a single fallback list per family (egui)
 /// wants: e.g. Inter, then the Japanese, Chinese, Korean and other-script fonts, then emoji.
 pub fn fallback_order(role: Role) -> Vec<&'static Font> {
-    let mut order: Vec<(u16, &'static Font)> = Vec::new();
-    for script in fallback_scripts(role) {
-        for f in fallback_chain(role, script) {
-            let p = f
-                .priority(role, script)
-                .or_else(|| f.priority(Role::Ui, script))
-                .unwrap_or(u16::MAX);
-            match order.iter_mut().find(|(_, g)| std::ptr::eq(*g, f)) {
-                Some(entry) => entry.0 = entry.0.min(p),
-                None => order.push((p, f)),
-            }
-        }
-    }
-    order.sort_by_key(|(p, f)| (*p, FONTS.iter().position(|g| std::ptr::eq(g, *f))));
-    order.into_iter().map(|(_, f)| f).collect()
+    ORDERS
+        .iter()
+        .filter(|(r, _)| *r == role)
+        .flat_map(|(_, order)| order.iter())
+        .filter_map(|i| FONTS.get(*i))
+        .collect()
 }
 
 /// The compiled-in bytes of a font from [`FONTS`] (`embed` feature). `None` for any other value.

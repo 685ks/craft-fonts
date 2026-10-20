@@ -55,12 +55,20 @@ dependencies = [
 [[package]]
 name = "craft-fonts"
 version = "0.1.0"
+dependencies = [
+ "craft-fonts-build",
+]
+
+[[package]]
+name = "craft-fonts-build"
+version = "0.1.0"
 
 [[package]]
 name = "craft-fonts-tests"
 version = "0.1.0"
 dependencies = [
  "craft-fonts",
+ "craft-fonts-build",
  "sha2",
  "skrifa",
 ]

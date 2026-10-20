@@ -1,6 +1,5 @@
-//! The `fonts/manifest.txt` format, shared by `build.rs` and the library (`#[path]`-included by
-//! both, so it has no dependencies). Apps that read the manifest from their own `build.rs` can
-//! copy this file.
+//! The `fonts/manifest.txt` format. It has no dependencies, so the `craft-fonts-build` helper and
+//! the `craft-fonts` crate (which re-exports it) share one definition.
 
 /// One line of the manifest.
 #[derive(Clone, Debug, PartialEq, Eq)]

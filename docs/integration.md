@@ -11,12 +11,13 @@ family, ahead of its own bundled fonts; the script fonts above stay as fallbacks
 variable fonts: egui draws their default instance (Regular), so an app that needs real Medium,
 SemiBold or Bold weights should instance them at build time rather than synthesise bold.
 
-## Why not a Cargo dependency
+## Why only a build-dependency, and only a tiny one
 
 Cargo resolves every dependency in `Cargo.toml`, optional ones included, even when the feature
-that enables them is off. A git dependency on craft-fonts would make every build (offline, in a
-fork, on a mirror) need this repository. So apps never list craft-fonts in `Cargo.toml`. The build
-option is an environment variable instead.
+that enables them is off. So apps never depend on the `craft-fonts` crate or on the font files: the
+fonts come in through an environment variable at build time. The one thing an app may depend on is
+the **`craft-fonts-build`** helper (`crates/craft-fonts-build`), as a build-dependency: it has no
+dependencies of its own and works the same whether or not `CRAFT_FONTS_DIR` is set.
 
 ## The build option: `CRAFT_FONTS_DIR`
 
@@ -36,96 +37,73 @@ Use an **absolute** path (e.g. `CRAFT_FONTS_DIR=$PWD/../craft-fonts`): Cargo run
 the crate's own directory, so a relative path would resolve from there. `CRAFT_FONTS_DIR` is read by
 `build.rs`, so changing it rebuilds only the crate that embeds the fonts.
 
-## The `build.rs` recipe
+## The build helper: `craft-fonts-build`
 
-Put this in the build script of the one crate that installs fonts (usually the UI or text crate).
-It has no dependencies; the manifest format is defined in `crates/craft-fonts/src/parse.rs`.
+In the one crate that installs fonts (usually the UI or text crate):
+
+```toml
+[build-dependencies]
+# Pin a commit and bump it deliberately, like the release checkout below. Cargo clones this
+# repository (fonts included) into ~/.cargo/git once; to avoid that, vendor the two files of
+# crates/craft-fonts-build into the app's workspace and use a `path` dependency instead.
+craft-fonts-build = { git = "https://github.com/685ks/craft-fonts", rev = "<full commit SHA>" }
+```
 
 ```rust
-use std::fmt::Write as _;
-use std::path::PathBuf;
-
+// build.rs
 fn main() {
-    println!("cargo::rerun-if-env-changed=CRAFT_FONTS_DIR");
-    println!("cargo::rerun-if-env-changed=CRAFT_FONTS_REQUIRED");
-    let mut src = String::from("pub static CRAFT_FONTS: &[CraftFont] = &[\n");
-    if let Some(dir) = std::env::var_os("CRAFT_FONTS_DIR").map(PathBuf::from) {
-        match craft_fonts(&dir) {
-            Ok(entries) => src.push_str(&entries),
-            Err(e) if std::env::var_os("CRAFT_FONTS_REQUIRED").is_some() => {
-                println!("cargo::error=CRAFT_FONTS_DIR={}: {e}", dir.display());
-            }
-            Err(e) => println!("cargo::warning=building without craft-fonts: CRAFT_FONTS_DIR={}: {e}", dir.display()),
-        }
-    }
-    src.push_str("];\n");
-    let out = PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default()).join("craft_fonts.rs");
-    if let Err(e) = std::fs::write(&out, src) {
-        println!("cargo::error=writing {}: {e}", out.display());
-    }
-}
-
-/// One `CraftFont { .. }` initialiser per manifest line.
-fn craft_fonts(dir: &std::path::Path) -> Result<String, String> {
-    let manifest = dir.join("fonts/manifest.txt");
-    println!("cargo::rerun-if-changed={}", manifest.display());
-    let text = std::fs::read_to_string(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
-    // Web builds have a size budget (e.g. Cloudflare's 25 MiB per file): embed only the UI font there.
-    const WEB_FONTS: &[(&str, &str)] = &[("BIZ UDPGothic", "Regular")];
-    let wasm = std::env::var("CARGO_CFG_TARGET_ARCH").is_ok_and(|a| a == "wasm32");
-    let mut out = String::new();
-    for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
-        let f: Vec<&str> = line.split(" | ").map(str::trim).collect();
-        let [family, style, file, scripts, ..] = f.as_slice() else {
-            return Err(format!("malformed manifest line: {line}"));
-        };
-        if wasm && !WEB_FONTS.contains(&(*family, *style)) {
-            continue;
-        }
-        let path = dir.join(file).canonicalize().map_err(|e| format!("{file}: {e}"))?;
-        println!("cargo::rerun-if-changed={}", path.display());
-        let scripts: Vec<String> = scripts.split(',').map(|s| format!("{:?}", s.trim())).collect();
-        let _ = writeln!(
-            out,
-            "    CraftFont {{ family: {family:?}, style: {style:?}, scripts: &[{}], bytes: include_bytes!({:?}) }},",
-            scripts.join(", "),
-            path.display().to_string(),
-        );
-    }
-    Ok(out)
+    craft_fonts_build::Builder::new().emit();
 }
 ```
 
-And in the crate:
-
 ```rust
-/// A font from the optional craft-fonts build input (empty unless built with `CRAFT_FONTS_DIR`).
-pub struct CraftFont {
-    pub family: &'static str,
-    pub style: &'static str,
-    /// ISO 15924 scripts the font is for, e.g. `"Jpan"`.
-    pub scripts: &'static [&'static str],
-    pub bytes: &'static [u8],
-}
-
+// src/fonts.rs (or wherever the fonts are installed)
 include!(concat!(env!("OUT_DIR"), "/craft_fonts.rs"));
 ```
 
-`CRAFT_FONTS` is always defined, so there is no `cfg` to thread through: an empty slice means the
-app was built without craft-fonts. Code that uses it must work when it is empty.
+That defines, in the including module:
+
+| Item | What |
+|---|---|
+| `CRAFT_FONTS: &[CraftFont]` | Every embedded font: `family`, `style`, `scripts`, `fallback`, `licence`, `licence_text`, `bytes`. Empty without `CRAFT_FONTS_DIR`. |
+| `CraftFontRole` | `Ui`, `Document`, `Mono`. |
+| `craft_font_chain(role, script)` | The embedded fonts to try, in order, for one ISO 15924 script (`"Kore"`, `"Arab"`, …). `Mono` borrows the `Ui` chain for scripts without a monospace font. |
+| `craft_font_order(role)` | Every embedded font for the role in one fallback order (what an egui font family wants). |
+| `craft_font_scripts(role)` | The scripts that have a chain. |
+
+The options on `Builder` (all optional):
+
+- `.web_fonts(&[("BIZ UDPGothic", "Regular"), ("Inter", "Regular")])`: the fonts embedded on
+  `wasm32` (default: `BIZ UDPGothic Regular` only, as before). Web hosts limit file size (e.g.
+  Cloudflare's 25 MiB); see the `subset` xtask in the README for smaller web fonts.
+- `.include(|e| …)`: embed only some entries on every target, e.g. only `Jpan` fonts. The whole
+  manifest is ~71 MB, so an app that does not need every script should filter.
+- `.legacy(true)`: emit only `CraftFont { family, style, scripts, bytes }` initialisers, for an app
+  that still defines `CraftFont` itself as the old copied recipe did. A drop-in replacement for it.
+- `.dir(path)` / `.no_checkout()` / `.required(bool)` / `.out_file(name)`: override
+  `CRAFT_FONTS_DIR`, `CRAFT_FONTS_REQUIRED` and the output name (`craft_fonts.rs`).
+
+Errors never panic: a bad checkout is a `cargo::warning` and an empty list, or a `cargo::error`
+when `CRAFT_FONTS_REQUIRED` is set. `CRAFT_FONTS` is always defined, so there is no `cfg` to thread
+through: an empty slice means the app was built without craft-fonts. Code that uses it must work
+when it is empty. `crates/craft-fonts-tests/build.rs` runs the helper the way an app does.
 
 ## Using the fonts
 
-- **UI (egui):** add each `Jpan` font as a fallback at the end of every font family, after the
-  app's own fonts and before system-font discovery, so Japanese text renders the same everywhere
-  the app was built with craft-fonts.
-- **Document text engines:** register them as fallback faces for Japanese, after the document's
-  requested font and the app's bundled fonts.
-- **Web (wasm32):** the recipe embeds only `BIZ UDPGothic Regular` (~4.5 MB); all the fonts are
+- **UI (egui):** append `craft_font_order(CraftFontRole::Ui)` (proportional) and
+  `craft_font_order(CraftFontRole::Mono)` (monospace) as fallbacks at the end of each font family,
+  after the app's own fonts and before system-font discovery, so every script renders the same
+  everywhere the app was built with craft-fonts. Japanese is ranked before Chinese and Korean, so
+  shared Han characters get Japanese forms.
+- **Document text engines:** for a run in script `S`, try the document's requested font, then the
+  app's bundled fonts, then `craft_font_chain(CraftFontRole::Document, S)`.
+- **Emoji:** Noto Color Emoji is COLRv1 (vector colour layers); it is last in every order. A
+  renderer without COLRv1 support draws nothing useful from it, so skip it there.
+- **Web (wasm32):** the helper embeds only `BIZ UDPGothic Regular` (~4.5 MB); all the fonts are
   ~71 MB, over typical per-file hosting limits. If the app's web build has a size check, measure
   with `CRAFT_FONTS_DIR` set and shrink `WEB_FONTS` (even to empty) if it fails.
-- Prefer `BIZ UDPGothic` for UI text and `Shippori Mincho` / `BIZ UDMincho` for serif document
-  text.
+- The chains encode the house choices: `BIZ UDPGothic` for Japanese UI text, `Shippori Mincho` /
+  `BIZ UDMincho` for Japanese document text, Inter / JetBrains Mono for Latin, Greek and Cyrillic.
 - Tests that assert on these fonts' glyphs must skip (not fail) when `CRAFT_FONTS` is empty, and
   CI should run them with `CRAFT_FONTS_DIR` set so they are exercised.
 
@@ -147,13 +125,13 @@ env:
 ```
 
 Packages built with craft-fonts must include each embedded font's licence file (copy
-`$CRAFT_FONTS_DIR/fonts/*/OFL.txt` into the package's licences, named after the family) and the
+`$CRAFT_FONTS_DIR/fonts/*/OFL.txt` into the package's licences, named after the family; `CraftFont::licence_text` also has it), and the
 app's `NOTICE` must say that builds made with `CRAFT_FONTS_DIR` embed the fonts listed in
 craft-fonts' `ATTRIBUTION.md`.
 
 ## Adding a font
 
 1. Put the file and its licence under `fonts/<family>/`, from a pinned upstream commit.
-2. Add a manifest line (with its SHA-256) and an `ATTRIBUTION.md` row.
+2. Add a manifest line (with its SHA-256 and its fallback ranks) and an `ATTRIBUTION.md` row.
 3. `cargo test --workspace`: `craft-fonts-tests` checks the checksum, licence, family name and,
    for Japanese fonts, coverage and vertical-text support. Add assertions for any new script.

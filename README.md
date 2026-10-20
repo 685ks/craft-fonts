@@ -22,6 +22,7 @@ This library is meant to have the following:
 | `fonts/manifest.txt` | Machine-readable list of every font: family, style, file, scripts, licence, SHA-256, pinned source, fallback-chain ranks. |
 | `ATTRIBUTION.md` | Authors, pinned sources and licences. |
 | `crates/craft-fonts` | Rust: the manifest as a static table, finding a checkout (`CRAFT_FONTS_DIR`), loading it, and an `embed` feature that compiles the fonts in. |
+| `crates/craft-fonts-build` | Rust, no dependencies: the build-script helper apps use (as a build-dependency only) to embed an optional checkout's fonts with their fallback chains; also defines the manifest format. |
 | `crates/craft-fonts-tests` | Tests asserted on these fonts: checksums, licences, family names, per-script coverage, Japanese outlines and vertical-text (`vert`/`vrt2`) support, COLRv1 emoji. |
 | `docs/integration.md` | How an app uses craft-fonts as a fully optional build input. |
 
@@ -61,11 +62,33 @@ let document = fallback_order(Role::Document);      // Inter, Shippori Mincho, â
 
 ## How the apps use it
 
-**Fully optional, never required.** The apps don't list craft-fonts in `Cargo.toml` (Cargo would
-fetch it for every build). Building with `CRAFT_FONTS_DIR=<path to this checkout>` makes an app
-embed the fonts in `fonts/manifest.txt`; without it, the app builds and runs as before. Release
-builds check out a pinned commit of this repo and set the option. See
-[`docs/integration.md`](docs/integration.md).
+**Fully optional, never required.** The apps don't depend on the fonts: building with
+`CRAFT_FONTS_DIR=<path to this checkout>` makes an app embed the fonts in `fonts/manifest.txt`;
+without it, the app builds and runs as before. Release builds check out a pinned commit of this
+repo and set the option. The embedding is done by the `craft-fonts-build` helper, the only thing an
+app lists (under `[build-dependencies]`):
+
+```toml
+[build-dependencies]
+craft-fonts-build = { git = "https://github.com/685ks/craft-fonts", rev = "<full commit SHA>" }
+```
+
+```rust
+// build.rs
+fn main() {
+    craft_fonts_build::Builder::new()
+        .web_fonts(&[("BIZ UDPGothic", "Regular")]) // wasm32: only these (the default)
+        .emit();
+}
+
+// in the crate
+include!(concat!(env!("OUT_DIR"), "/craft_fonts.rs"));
+// CRAFT_FONTS, craft_font_chain(CraftFontRole::Ui, "Kore"), craft_font_order(CraftFontRole::Mono), â€¦
+```
+
+`Builder::legacy(true)` produces exactly what the old copied `build.rs` recipe did, so an app can
+switch without touching its own `CraftFont` struct. See [`docs/integration.md`](docs/integration.md)
+for every option, how to use the chains in egui and document engines, and releases.
 
 **Font assets for the Crafting Apps belong here**, not in the app repos: add the file, its licence,
 a manifest line and an attribution row, and the tests check it.
