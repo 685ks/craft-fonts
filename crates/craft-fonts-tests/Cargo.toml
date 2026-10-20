@@ -11,6 +11,9 @@ publish = false
 [dependencies]
 craft-fonts = { path = "../craft-fonts" }
 
+[build-dependencies]
+craft-fonts-build = { path = "../craft-fonts-build" }
+
 [dev-dependencies]
 skrifa = "0.48"
 sha2 = "0.11"

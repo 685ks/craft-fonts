@@ -1,9 +1,6 @@
 //! Turns `fonts/manifest.txt` into a static table (and, with the `embed` feature, the font bytes).
 
-#[path = "src/parse.rs"]
-#[allow(dead_code)]
-mod parse;
-
+use craft_fonts_build::{Role, fallback_chain, fallback_order, fallback_scripts, parse_manifest};
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
@@ -14,7 +11,7 @@ fn main() {
     println!("cargo::rerun-if-changed={}", manifest.display());
     let text = std::fs::read_to_string(&manifest)
         .unwrap_or_else(|e| fail(&format!("reading {}: {e}", manifest.display())));
-    let entries = parse::parse_manifest(&text).unwrap_or_else(|e| fail(&e.to_string()));
+    let entries = parse_manifest(&text).unwrap_or_else(|e| fail(&e.to_string()));
     let embed = std::env::var_os("CARGO_FEATURE_EMBED").is_some();
 
     let mut src = String::from(
@@ -22,9 +19,19 @@ fn main() {
     );
     for e in &entries {
         let scripts: Vec<String> = e.scripts.iter().map(|s| format!("{s:?}")).collect();
+        let fallback: Vec<String> = e
+            .fallback
+            .iter()
+            .map(|f| {
+                format!(
+                    "Fallback {{ role: Role::{:?}, script: {:?}, priority: {} }}",
+                    f.role, f.script, f.priority
+                )
+            })
+            .collect();
         let _ = writeln!(
             src,
-            "    Font {{ family: {:?}, style: {:?}, file: {:?}, scripts: &[{}], licence: {:?}, licence_file: {:?}, sha256: {:?}, source: {:?} }},",
+            "    Font {{ family: {:?}, style: {:?}, file: {:?}, scripts: &[{}], licence: {:?}, licence_file: {:?}, sha256: {:?}, source: {:?}, fallback: &[{}] }},",
             e.family,
             e.style,
             e.file,
@@ -32,7 +39,24 @@ fn main() {
             e.licence,
             e.licence_file,
             e.sha256,
-            e.source
+            e.source,
+            fallback.join(", ")
+        );
+    }
+    src.push_str("];\n");
+    src.push_str("/// `(role, script, indices into FONTS)`, from the manifest's fallback field.\nstatic CHAINS: &[(Role, &str, &[usize])] = &[\n");
+    for role in Role::ALL {
+        for script in fallback_scripts(&entries, role) {
+            let chain = fallback_chain(&entries, role, &script);
+            let _ = writeln!(src, "    (Role::{role:?}, {script:?}, &{chain:?}),");
+        }
+    }
+    src.push_str("];\n/// `(role, indices into FONTS)`: every font for the role in one fallback order.\nstatic ORDERS: &[(Role, &[usize])] = &[\n");
+    for role in Role::ALL {
+        let _ = writeln!(
+            src,
+            "    (Role::{role:?}, &{:?}),",
+            fallback_order(&entries, role)
         );
     }
     src.push_str("];\n");

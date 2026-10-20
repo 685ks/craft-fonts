@@ -1,6 +1,8 @@
 //! Assertions on the font files themselves.
 
-use craft_fonts::{FONTS, Font, for_script};
+use craft_fonts::{
+    FONTS, Font, Role, fallback_chain, fallback_order, fallback_scripts, for_script,
+};
 use sha2::{Digest, Sha256};
 use skrifa::raw::TableProvider;
 use skrifa::{FontRef, MetadataProvider, string::StringId};
@@ -293,4 +295,158 @@ fn the_monospace_font_has_equal_advances() {
         advances.windows(2).all(|w| w[0] == w[1]),
         "advances differ: {advances:?}"
     );
+}
+
+#[test]
+fn korean_fonts_cover_korean_text() {
+    covers(
+        "Kore",
+        concat!(
+            "가나다라마바사아자차카타파하한국어글꼴파일편집보기창도움말새로열기저장닫기실행취소복사붙여넣기삭제선택",
+            "ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ",
+            "韓國漢字",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        ),
+    );
+}
+
+#[test]
+fn traditional_chinese_fonts_cover_chinese_text() {
+    covers(
+        "Hant",
+        concat!(
+            "中文繁體字檔案編輯檢視視窗說明新增開啟儲存關閉復原重做複製貼上刪除選擇圖層頁面樣式顏色匯出列印設定",
+            "，。、：；？！（）「」『』…",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+        ),
+    );
+}
+
+#[test]
+fn hebrew_fonts_cover_hebrew_text() {
+    covers(
+        "Hebr",
+        concat!(
+            "אבגדהוזחטיכךלמםנןסעפףצץקרשת",
+            "\u{05B0}\u{05B4}\u{05B7}\u{05B8}\u{05BC}\u{05C1}\u{05C2}",
+            "׳״₪",
+        ),
+    );
+}
+
+#[test]
+fn devanagari_fonts_cover_devanagari_text() {
+    covers(
+        "Deva",
+        concat!(
+            "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
+            "\u{093E}\u{093F}\u{0940}\u{0941}\u{0942}\u{0947}\u{0948}\u{094B}\u{094C}\u{094D}\u{0902}\u{0903}\u{093C}",
+            "०१२३४५६७८९।॥",
+        ),
+    );
+}
+
+#[test]
+fn the_emoji_font_covers_emoji_in_colrv1() {
+    covers("Zsye", "😀😂🥲👍🎉❤🔥✅🚀🌍🍣🐱");
+    for f in for_script("Zsye") {
+        let data = bytes(f);
+        let font = FontRef::new(&data).unwrap_or_else(|e| panic!("{}: {e}", f.file));
+        let colr = font
+            .colr()
+            .unwrap_or_else(|e| panic!("{}: no COLR table: {e}", f.file));
+        assert!(
+            colr.version() >= 1,
+            "{}: COLR version {} (want COLRv1)",
+            f.file,
+            colr.version()
+        );
+        assert!(font.cpal().is_ok(), "{}: no CPAL palette", f.file);
+    }
+}
+
+/// A short sample of each script that has a fallback chain.
+const SAMPLES: &[(&str, &str)] = &[
+    ("Latn", "Hello, wörld! ÀÉÎõü"),
+    ("Grek", "Καλημέρα κόσμε"),
+    ("Cyrl", "Привет, мир"),
+    ("Jpan", "日本語のテキスト、カタカナ。"),
+    ("Hans", "简体中文文本"),
+    ("Hant", "繁體中文文本"),
+    ("Kore", "한국어 텍스트"),
+    ("Hang", "한글"),
+    ("Arab", "النص العربي"),
+    ("Hebr", "טקסט בעברית"),
+    ("Deva", "हिन्दी पाठ"),
+    ("Thai", "ข้อความภาษาไทย"),
+    ("Geor", "ქართული ტექსტი"),
+    ("Zsye", "😀👍🎉"),
+];
+
+#[test]
+fn every_fallback_chain_starts_with_a_font_that_covers_its_script() {
+    for role in Role::ALL {
+        let scripts = fallback_scripts(role);
+        for script in &scripts {
+            let sample = SAMPLES
+                .iter()
+                .find(|(s, _)| s == script)
+                .unwrap_or_else(|| panic!("add a {script} sample to SAMPLES"))
+                .1;
+            let head = fallback_chain(role, script)[0];
+            let data = bytes(head);
+            let font = FontRef::new(&data).unwrap_or_else(|e| panic!("{}: {e}", head.file));
+            let charmap = font.charmap();
+            let missing: String = sample
+                .chars()
+                .filter(|c| !c.is_whitespace() && charmap.map(*c).is_none())
+                .collect();
+            assert!(
+                missing.is_empty(),
+                "{role:?} {script}: {} has no glyph for {missing:?}",
+                head.family
+            );
+        }
+        for (script, _) in SAMPLES {
+            assert!(scripts.contains(script), "{role:?} has no {script} chain");
+        }
+    }
+}
+
+#[test]
+fn the_fallback_chains_put_the_house_fonts_first_and_emoji_last() {
+    let first = |role, script| fallback_chain(role, script)[0].family;
+    assert_eq!(first(Role::Ui, "Latn"), "Inter");
+    assert_eq!(first(Role::Document, "Latn"), "Inter");
+    assert_eq!(first(Role::Mono, "Latn"), "JetBrains Mono");
+    assert_eq!(first(Role::Ui, "Jpan"), "BIZ UDPGothic");
+    assert_eq!(first(Role::Document, "Jpan"), "Shippori Mincho");
+    // No monospace CJK font: the mono chain borrows the UI one.
+    assert_eq!(first(Role::Mono, "Hans"), "Noto Sans CJK SC");
+    for role in Role::ALL {
+        let order = fallback_order(role);
+        let want = if role == Role::Mono {
+            "JetBrains Mono"
+        } else {
+            "Inter"
+        };
+        assert_eq!(order[0].family, want, "{role:?}");
+        assert_eq!(
+            order[order.len() - 1].family,
+            "Noto Color Emoji",
+            "{role:?}"
+        );
+        // Japanese before Chinese and Korean, so shared Han characters get Japanese forms.
+        let pos = |family: &str| order.iter().position(|f| f.family == family).unwrap();
+        let jpan = if role == Role::Document {
+            "Shippori Mincho"
+        } else {
+            "BIZ UDPGothic"
+        };
+        assert!(pos(jpan) < pos("Noto Sans CJK SC"), "{role:?}");
+        assert!(pos("Noto Sans CJK SC") < pos("Noto Sans KR"), "{role:?}");
+        if role == Role::Mono {
+            assert!(!order.iter().any(|f| f.family == "Inter"), "Inter in mono");
+        }
+    }
 }

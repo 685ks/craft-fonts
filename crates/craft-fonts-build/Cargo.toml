@@ -1,0 +1,12 @@
+[package]
+name = "craft-fonts-build"
+description = "Build-script helper for the Crafting Apps: embeds the fonts of an optional craft-fonts checkout (CRAFT_FONTS_DIR) with their fallback chains. No dependencies."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true

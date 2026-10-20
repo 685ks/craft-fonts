@@ -8,8 +8,9 @@
 //! The apps do **not** depend on this crate: Cargo resolves even optional git dependencies, so a
 //! dependency would make craft-fonts required for every build. Apps read `fonts/manifest.txt`
 //! from their own `build.rs` when the `CRAFT_FONTS_DIR` build option is set; see
-//! `docs/integration.md`. This crate is for tools and tests that can afford the dependency, and it
-//! keeps the manifest format ([`parse_manifest`]) defined in one place.
+//! `docs/integration.md`; the `craft-fonts-build` helper does that for them. This crate is for
+//! tools and tests that can afford the dependency. The manifest format ([`parse_manifest`]) and
+//! the chain ranking live in `craft-fonts-build` and are re-exported here.
 #![deny(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -19,11 +20,9 @@
     clippy::unreachable
 )]
 
-mod parse;
-
 use std::path::{Path, PathBuf};
 
-pub use parse::{Entry, ManifestError, parse_manifest};
+pub use craft_fonts_build::{Entry, FallbackEntry, ManifestError, Role, parse_manifest};
 
 /// One font file from `fonts/manifest.txt`, known at compile time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +43,29 @@ pub struct Font {
     pub sha256: &'static str,
     /// Pinned upstream source.
     pub source: &'static str,
+    /// The font's places in the per-script fallback chains.
+    pub fallback: &'static [Fallback],
+}
+
+/// One place of a font in a fallback chain: for `role` text in `script`, at `priority`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Fallback {
+    pub role: Role,
+    /// ISO 15924 script code.
+    pub script: &'static str,
+    /// Lower comes first; global across scripts.
+    pub priority: u16,
+}
+
+impl Font {
+    /// This font's priority in the `role` chain for `script`, if it is in that chain.
+    pub fn priority(&self, role: Role, script: &str) -> Option<u16> {
+        self.fallback
+            .iter()
+            .filter(|f| f.role == role && f.script == script)
+            .map(|f| f.priority)
+            .min()
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
@@ -51,6 +73,40 @@ include!(concat!(env!("OUT_DIR"), "/manifest.rs"));
 /// The fonts meant for an ISO 15924 script (e.g. `"Jpan"`), in manifest order.
 pub fn for_script(script: &str) -> impl Iterator<Item = &'static Font> + '_ {
     FONTS.iter().filter(move |f| f.scripts.contains(&script))
+}
+
+/// The fonts to try, in order, for `role` text in `script` (e.g. `Role::Ui`, `"Kore"`), as the
+/// manifest's fallback field ranks them (ties keep manifest order). Every style of a family is
+/// listed; pick the one you need by [`Font::style`]. A script with no [`Role::Mono`] entry gets its
+/// [`Role::Ui`] chain for `Mono`. Empty for a script no font is ranked for.
+pub fn fallback_chain(role: Role, script: &str) -> Vec<&'static Font> {
+    CHAINS
+        .iter()
+        .filter(|(r, s, _)| *r == role && *s == script)
+        .flat_map(|(_, _, chain)| chain.iter())
+        .filter_map(|i| FONTS.get(*i))
+        .collect()
+}
+
+/// The scripts that have a `role` chain, sorted (for `Mono`, also those served by the UI chain).
+pub fn fallback_scripts(role: Role) -> Vec<&'static str> {
+    CHAINS
+        .iter()
+        .filter(|(r, _, _)| *r == role)
+        .map(|(_, s, _)| *s)
+        .collect()
+}
+
+/// One list of every font for `role` text, in fallback order: each font at its best priority over
+/// [`fallback_scripts`]. This is what a renderer with a single fallback list per family (egui)
+/// wants: e.g. Inter, then the Japanese, Chinese, Korean and other-script fonts, then emoji.
+pub fn fallback_order(role: Role) -> Vec<&'static Font> {
+    ORDERS
+        .iter()
+        .filter(|(r, _)| *r == role)
+        .flat_map(|(_, order)| order.iter())
+        .filter_map(|i| FONTS.get(*i))
+        .collect()
 }
 
 /// The compiled-in bytes of a font from [`FONTS`] (`embed` feature). `None` for any other value.
@@ -151,6 +207,77 @@ mod tests {
             Err(ManifestError::BadSha256 { line: 1 })
         );
         assert_eq!(parse_manifest("# comment\n\n"), Ok(Vec::new()));
+    }
+
+    #[test]
+    fn fallback_entries_parse_and_are_checked() {
+        let line = |fb: &str| {
+            format!(
+                "A | Regular | f | Jpan,Latn | OFL-1.1 | l | {} | s | {fb}",
+                "0".repeat(64)
+            )
+        };
+        let e = parse_manifest(&line("ui/Jpan=20, doc/Latn=5")).unwrap();
+        assert_eq!(
+            e[0].fallback,
+            vec![
+                FallbackEntry {
+                    role: Role::Ui,
+                    script: "Jpan".into(),
+                    priority: 20
+                },
+                FallbackEntry {
+                    role: Role::Document,
+                    script: "Latn".into(),
+                    priority: 5
+                },
+            ]
+        );
+        assert_eq!(parse_manifest(&line("-")).unwrap()[0].fallback, vec![]);
+        for bad in ["ui/Hans=1", "web/Jpan=1", "ui/Jpan", "ui/Jpan=x", "Jpan=1"] {
+            assert!(
+                matches!(
+                    parse_manifest(&line(bad)),
+                    Err(ManifestError::BadFallback { line: 1, .. })
+                ),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn fallback_chains_follow_the_priorities() {
+        for role in Role::ALL {
+            for script in fallback_scripts(role) {
+                let chain = fallback_chain(role, script);
+                assert!(!chain.is_empty(), "{role:?} {script}");
+                let own = chain.iter().any(|f| f.priority(role, script).is_some());
+                let ranks: Vec<u16> = chain
+                    .iter()
+                    .map(|f| {
+                        f.priority(if own { role } else { Role::Ui }, script)
+                            .unwrap()
+                    })
+                    .collect();
+                assert!(ranks.windows(2).all(|w| w[0] <= w[1]), "{role:?} {script}");
+            }
+        }
+        // Each font appears once in an order, and every chained font is in it.
+        for role in Role::ALL {
+            let order = fallback_order(role);
+            for (i, f) in order.iter().enumerate() {
+                assert!(
+                    !order[i + 1..].iter().any(|g| g == f),
+                    "{role:?}: {f:?} twice"
+                );
+            }
+            for script in fallback_scripts(role) {
+                for f in fallback_chain(role, script) {
+                    assert!(order.contains(&f), "{role:?} {script}: {}", f.family);
+                }
+            }
+        }
+        assert!(fallback_chain(Role::Ui, "Xxxx").is_empty());
     }
 
     #[test]
