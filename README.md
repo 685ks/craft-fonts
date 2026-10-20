@@ -36,6 +36,8 @@ This library is meant to have the following:
 | Noto Sans Arabic | Regular (variable: wdth, wght) | Arabic UI and document text (sans) | OFL-1.1 |
 | Noto Sans Thai | Regular (variable: wdth, wght) | Thai UI and document text (sans) | OFL-1.1 |
 | Noto Sans Georgian | Regular (variable: wdth, wght) | Georgian UI and document text (sans) | OFL-1.1 |
+| Inter | Regular (variable: opsz, wght) | The house UI font for Latin, Greek and Cyrillic (has tabular figures) | OFL-1.1 |
+| JetBrains Mono | Regular (variable: wght) | Monospace UI text: command lines, code, numeric columns | OFL-1.1 |
 
 ## How the apps use it
 
