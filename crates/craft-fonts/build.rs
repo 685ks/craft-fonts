@@ -22,9 +22,19 @@ fn main() {
     );
     for e in &entries {
         let scripts: Vec<String> = e.scripts.iter().map(|s| format!("{s:?}")).collect();
+        let fallback: Vec<String> = e
+            .fallback
+            .iter()
+            .map(|f| {
+                format!(
+                    "Fallback {{ role: Role::{:?}, script: {:?}, priority: {} }}",
+                    f.role, f.script, f.priority
+                )
+            })
+            .collect();
         let _ = writeln!(
             src,
-            "    Font {{ family: {:?}, style: {:?}, file: {:?}, scripts: &[{}], licence: {:?}, licence_file: {:?}, sha256: {:?}, source: {:?} }},",
+            "    Font {{ family: {:?}, style: {:?}, file: {:?}, scripts: &[{}], licence: {:?}, licence_file: {:?}, sha256: {:?}, source: {:?}, fallback: &[{}] }},",
             e.family,
             e.style,
             e.file,
@@ -32,7 +42,8 @@ fn main() {
             e.licence,
             e.licence_file,
             e.sha256,
-            e.source
+            e.source,
+            fallback.join(", ")
         );
     }
     src.push_str("];\n");

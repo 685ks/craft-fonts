@@ -19,7 +19,7 @@ This library is meant to have the following:
 | Path | What |
 |---|---|
 | `fonts/` | The font files, one directory per family, each with its licence. |
-| `fonts/manifest.txt` | Machine-readable list of every font: family, style, file, scripts, licence, SHA-256, pinned source. |
+| `fonts/manifest.txt` | Machine-readable list of every font: family, style, file, scripts, licence, SHA-256, pinned source, fallback-chain ranks. |
 | `ATTRIBUTION.md` | Authors, pinned sources and licences. |
 | `crates/craft-fonts` | Rust: the manifest as a static table, finding a checkout (`CRAFT_FONTS_DIR`), loading it, and an `embed` feature that compiles the fonts in. |
 | `crates/craft-fonts-tests` | Tests asserted on these fonts: checksums, licences, family names, per-script coverage, Japanese outlines and vertical-text (`vert`/`vrt2`) support, COLRv1 emoji. |
@@ -43,6 +43,21 @@ This library is meant to have the following:
 | Noto Sans Hebrew | Regular (variable: wdth, wght) | Hebrew UI and document text (sans) | OFL-1.1 |
 | Noto Sans Devanagari | Regular (variable: wdth, wght) | Devanagari (Hindi, Marathi, Nepali…) UI and document text (sans) | OFL-1.1 |
 | Noto Color Emoji | Regular (COLRv1) | Colour emoji (vector COLRv1; needs a COLRv1-capable renderer) | OFL-1.1 |
+
+### Fallback chains
+
+Each manifest line can rank its font in the per-script fallback chains for three roles: `ui`
+(interface text), `doc` (document text) and `mono` (monospace; a script with no `mono` entry uses
+its `ui` chain). Priorities are global, lower first: Latin/Greek/Cyrillic (10: Inter, or JetBrains
+Mono for `mono`), Japanese (20–22), Simplified/Traditional Chinese and Korean (23–25), Arabic,
+Hebrew, Devanagari, Thai, Georgian (30–34), emoji (90). Japanese comes before Chinese and Korean
+so Han characters shared between them get Japanese forms by default.
+
+```rust
+use craft_fonts::{Role, fallback_chain, fallback_order};
+let korean_ui = fallback_chain(Role::Ui, "Kore");   // [Noto Sans KR]
+let document = fallback_order(Role::Document);      // Inter, Shippori Mincho, …, Noto Color Emoji
+```
 
 ## How the apps use it
 
