@@ -22,7 +22,7 @@ dependencies of its own and works the same whether or not `CRAFT_FONTS_DIR` is s
 ## The build option: `CRAFT_FONTS_DIR`
 
 ```sh
-git clone https://github.com/storytold/craft-fonts ../craft-fonts
+git clone https://github.com/685ks/craft-fonts ../craft-fonts
 CRAFT_FONTS_DIR=$PWD/../craft-fonts cargo build --release
 ```
 
@@ -115,7 +115,7 @@ them. In `release.yml`, check out craft-fonts at a pinned commit and build with 
 ```yaml
 - uses: actions/checkout@v4
   with:
-    repository: storytold/craft-fonts
+    repository: 685ks/craft-fonts
     ref: <full commit SHA>        # bump deliberately
     path: craft-fonts
 # then, on the build steps:
