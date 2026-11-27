@@ -6,7 +6,7 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/storytold/craft-fonts"
+repository = "https://github.com/685ks/craft-fonts"
 rust-version = "1.90"
 
 [workspace.lints.rust]
